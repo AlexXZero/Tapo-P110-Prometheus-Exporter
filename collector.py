@@ -74,7 +74,7 @@ def time_observation(ip_address, room):
     except Exception as e:
         status = RED_FAILURE
         caught = e
-    
+
     duration = floor((time() - start) * 1000)
     OBSERVATION_RED_METRICS.labels(ip_address=ip_address, room=room, success=status).observe(duration)
 
@@ -114,7 +114,7 @@ class Collector:
             return device.getEnergyUsage()
 
     def collect(self):
-        logger.info("recieving prometheus metrics scrape: collecting observations")
+        logger.info("receiving prometheus metrics scrape: collecting observations")
 
         metrics = get_metrics()
         metrics[MetricType.DEVICE_COUNT].add_metric([], len(self.devices))
@@ -125,7 +125,7 @@ class Collector:
             })
 
             try:
-                data = self.get_device_data(device, ip_addr, room)['result']
+                data = self.get_device_data(device, ip_addr, room)
 
                 labels = [ip_addr, room]
                 metrics[MetricType.TODAY_RUNTIME].add_metric(labels, data['today_runtime'])
@@ -137,4 +137,4 @@ class Collector:
                 logger.exception("encountered exception during observation!")
 
         for m in metrics.values():
-            yield m        
+            yield m

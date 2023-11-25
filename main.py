@@ -17,12 +17,12 @@ def graceful_shutdown(shutdown_event):
         })
 
         shutdown_event.set()
-    
+
     signal.signal(signal.SIGINT, _handle)
 
 
-def start_monitoring(prometheus_port, collector):
-    start_http_server(prometheus_port)
+def start_monitoring(exporter_port, collector):
+    start_http_server(exporter_port)
     REGISTRY.register(collector)
 
 
@@ -36,19 +36,19 @@ def start_monitoring(prometheus_port, collector):
     help="Password associated with TP-Link TAPO account."
 )
 @option(
-    '--config-file', default="tapo.yaml", envvar="TAPO_MONITOR_CONFIG",
-    help="Password associated with TP-Link TAPO account."
+    '--config-file', default="tapo-exporter.yml", envvar="TAPO_MONITOR_CONFIG",
+    help="Configuration file with list of devices."
 )
 @option(
-    '--prometheus-port', default=8080, help="port for prometheus metric exposition"
+    '--exporter-port', default=8080, help="port for prometheus metric exposition"
 )
-def run(tapo_email, tapo_password, config_file, prometheus_port):
+def run(tapo_email, tapo_password, config_file, exporter_port):
     with open(config_file, "r") as cfg:
         config = safe_load(cfg)
-    
+
     logger.info("configuring metrics collector and prometheus http server")
     collector = Collector(config['devices'], tapo_email, tapo_password)
-    start_monitoring(prometheus_port, collector)
+    start_monitoring(exporter_port, collector)
 
     shutdown = Event()
     graceful_shutdown(shutdown)

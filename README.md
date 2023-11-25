@@ -75,3 +75,25 @@ devices:
   study: "192.168.1.102"
   living_room: "192.168.1.183"
 ```
+
+## Build docker
+
+```
+docker build -t tapo-exporter .
+```
+
+## Run docker
+
+```
+docker run --env-file tapo-exporter.env -v$(pwd)/tapo-exporter.yml:/etc/tapo-exporter.yml -p9877:9877/tcp tapo-exporter --exporter-port=9877
+```
+
+## Notes
+
+This exporter has fix for PyP100 library
+See:
+https://github.com/fishbigger/TapoP100/issues/128
+https://github.com/fishbigger/TapoP100/issues/123
+
+Fixed PyP100:
+https://github.com/almottier/TapoP100/tree/main/PyP100
