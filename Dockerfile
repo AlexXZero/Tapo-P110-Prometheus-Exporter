@@ -1,10 +1,11 @@
-FROM alpine:latest
+FROM alpine:3.18.5
 
 RUN apk --update --no-cache add \
         python3 \
         py3-pip \
         git
 
+# Note: Since alpine:3.19 pip can no longer install to system directory which is managed by apk
 RUN pip3 install --no-cache-dir \
 #    PyP100>=0.0.18 \
     git+https://github.com/almottier/TapoP100.git@main \
