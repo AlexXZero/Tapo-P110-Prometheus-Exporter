@@ -95,8 +95,8 @@ class Collector:
 
             logger.debug("connecting to device", extra=extra)
             d = PyP110.P110(ip_address, email_address, password)
-            d.handshake()
-            d.login()
+            #d.handshake()  # Deprecated
+            #d.login()      # Deprecated
 
             logger.debug("successfully authenticated with device", extra=extra)
             return d
@@ -108,10 +108,20 @@ class Collector:
 
     def get_device_data(self, device, ip_address, room):
         with time_observation(ip_address, room):
-            logger.debug("retrieving energy usage statistics for device", extra={
+            extra = {
                 "ip": ip_address, "room": room,
-            })
-            return device.getEnergyUsage()
+            }
+            logger.debug("retrieving energy usage statistics for device", extra=extra)
+            try:
+                return device.getEnergyUsage()
+            except Exception as e:
+                logger.warning("Connection error. Attempting to reconnect.", extra=extra)
+                try:
+                    device.protocol = None  # Reset connection by clearing protocol field
+                    return device.getEnergyUsage()
+                except Exception as re:
+                    logger.error("Failed to reconnect. Error: {}".format(re), extra=extra)
+                    raise  # Re-raise the exception if reconnection fails
 
     def collect(self):
         logger.info("receiving prometheus metrics scrape: collecting observations")
