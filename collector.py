@@ -4,17 +4,9 @@ from math import floor
 from time import time
 
 from loguru import logger
-from prometheus_client import Histogram
+import prometheus_client as prometheus
 from prometheus_client.core import GaugeMetricFamily
 from PyP100 import PyP110
-
-
-OBSERVATION_RED_METRICS = Histogram(
-    "tapo_p110_observation_rate_ms",
-    "RED metrics for queries to the TP-Link TAPO P110 devices. (milliseconds)",
-    labelnames=["ip_address", "room", "success"],
-    buckets=(10, 100, 150, 200, 250, 300, 500, 750, 1000, 1500, 2000)
-)
 
 
 class MetricType(Enum):
@@ -60,32 +52,6 @@ def get_metrics():
     }
 
 
-RED_SUCCESS = "SUCCESS"
-RED_FAILURE = "FAILURE"
-
-@contextmanager
-def time_observation(ip_address, room):
-    caught = None
-    status = RED_SUCCESS
-    start = time()
-
-    try:
-        yield
-    except Exception as e:
-        status = RED_FAILURE
-        caught = e
-
-    duration = floor((time() - start) * 1000)
-    OBSERVATION_RED_METRICS.labels(ip_address=ip_address, room=room, success=status).observe(duration)
-
-    logger.debug("observation completed", extra={
-        "ip": ip_address, "room": room, "duration_ms": duration,
-    })
-
-    if caught:
-        raise caught
-
-
 class Collector:
     def __init__(self, deviceMap, email_address, password):
         def create_device(ip_address, room):
@@ -106,22 +72,26 @@ class Collector:
             for room, ip_address in deviceMap.items()
         }
 
+        # Stop scraping of default metric
+        prometheus.REGISTRY.unregister(prometheus.PROCESS_COLLECTOR)
+        prometheus.REGISTRY.unregister(prometheus.PLATFORM_COLLECTOR)
+        prometheus.REGISTRY.unregister(prometheus.GC_COLLECTOR)
+
     def get_device_data(self, device, ip_address, room):
-        with time_observation(ip_address, room):
-            extra = {
-                "ip": ip_address, "room": room,
-            }
-            logger.debug("retrieving energy usage statistics for device", extra=extra)
+        extra = {
+            "ip": ip_address, "room": room,
+        }
+        logger.debug("retrieving energy usage statistics for device", extra=extra)
+        try:
+            return device.getEnergyUsage()
+        except Exception as e:
+            logger.warning("Connection error. Attempting to reconnect.", extra=extra)
             try:
+                device.protocol = None  # Reset connection by clearing protocol field
                 return device.getEnergyUsage()
-            except Exception as e:
-                logger.warning("Connection error. Attempting to reconnect.", extra=extra)
-                try:
-                    device.protocol = None  # Reset connection by clearing protocol field
-                    return device.getEnergyUsage()
-                except Exception as re:
-                    logger.error("Failed to reconnect. Error: {}".format(re), extra=extra)
-                    raise  # Re-raise the exception if reconnection fails
+            except Exception as re:
+                logger.error("Failed to reconnect. Error: {}".format(re), extra=extra)
+                raise  # Re-raise the exception if reconnection fails
 
     def collect(self):
         logger.info("receiving prometheus metrics scrape: collecting observations")
