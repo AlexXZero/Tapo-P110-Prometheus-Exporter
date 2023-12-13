@@ -7,6 +7,7 @@ from loguru import logger
 import prometheus_client as prometheus
 from prometheus_client.core import GaugeMetricFamily
 from PyP100 import PyP110
+from base64 import b64decode
 
 
 class MetricType(Enum):
@@ -16,6 +17,7 @@ class MetricType(Enum):
     TODAY_ENERGY = auto()
     MONTH_ENERGY = auto()
     CURRENT_POWER = auto()
+    RSSI = auto()
 
 
 def get_metrics():
@@ -27,27 +29,32 @@ def get_metrics():
         MetricType.TODAY_RUNTIME: GaugeMetricFamily(
             "tapo_p110_today_runtime_mins",
             "Current running time for the TP-Link TAPO P110 Smart Socket today. (minutes)",
-            labels=["ip_address", "room"],
+            labels=["alias", "id", "ip_address", "room"],
         ),
         MetricType.MONTH_RUNTIME: GaugeMetricFamily(
             "tapo_p110_month_runtime_mins",
             "Current running time for the TP-Link TAPO P110 Smart Socket this month. (minutes)",
-            labels=["ip_address", "room"],
+            labels=["alias", "id", "ip_address", "room"],
         ),
         MetricType.TODAY_ENERGY: GaugeMetricFamily(
             "tapo_p110_today_energy_wh",
             "Energy consumed by the TP-Link TAPO P110 Smart Socket today. (Watt-hours)",
-            labels=["ip_address", "room"],
+            labels=["alias", "id", "ip_address", "room"],
         ),
         MetricType.MONTH_ENERGY: GaugeMetricFamily(
             "tapo_p110_month_energy_wh",
             "Energy consumed by the TP-Link TAPO P110 Smart Socket this month. (Watt-hours)",
-            labels=["ip_address", "room"],
+            labels=["alias", "id", "ip_address", "room"],
         ),
         MetricType.CURRENT_POWER: GaugeMetricFamily(
             "tapo_p110_power_consumption_w",
             "Current power consumption for TP-Link TAPO P110 Smart Socket. (Watts)",
-            labels=["ip_address", "room"],
+            labels=["alias", "id", "ip_address", "room"],
+        ),
+        MetricType.RSSI: GaugeMetricFamily(
+            "tapo_p110_rssi_db",
+            "Wifi received signal strength indicator for the TP-Link TAPO P110 Smart Socket. (Decibels)",
+            labels=["alias", "id", "ip_address", "room"],
         ),
     }
 
@@ -78,17 +85,23 @@ class Collector:
         prometheus.REGISTRY.unregister(prometheus.GC_COLLECTOR)
 
     def get_device_data(self, device, ip_address, room):
+        def get_data():
+            info = device.getDeviceInfo()
+            energyUsage = device.getEnergyUsage()
+            info["nickname"] = b64decode(info["nickname"]).decode("utf-8")
+            return {**info, **energyUsage}
+
         extra = {
             "ip": ip_address, "room": room,
         }
         logger.debug("retrieving energy usage statistics for device", extra=extra)
         try:
-            return device.getEnergyUsage()
+            return get_data()
         except Exception as e:
             logger.warning("Connection error. Attempting to reconnect.", extra=extra)
             try:
                 device.protocol = None  # Reset connection by clearing protocol field
-                return device.getEnergyUsage()
+                return get_data()
             except Exception as re:
                 logger.error("Failed to reconnect. Error: {}".format(re), extra=extra)
                 raise  # Re-raise the exception if reconnection fails
@@ -107,12 +120,13 @@ class Collector:
             try:
                 data = self.get_device_data(device, ip_addr, room)
 
-                labels = [ip_addr, room]
+                labels = [data['nickname'], data['device_id'], ip_addr, room]
                 metrics[MetricType.TODAY_RUNTIME].add_metric(labels, data['today_runtime'])
                 metrics[MetricType.MONTH_RUNTIME].add_metric(labels, data['month_runtime'])
                 metrics[MetricType.TODAY_ENERGY].add_metric(labels, data['today_energy'])
                 metrics[MetricType.MONTH_ENERGY].add_metric(labels, data['month_energy'])
                 metrics[MetricType.CURRENT_POWER].add_metric(labels, data['current_power'])
+                metrics[MetricType.RSSI].add_metric(labels, data['rssi'])
             except Exception as e:
                 logger.exception("encountered exception during observation!")
 
